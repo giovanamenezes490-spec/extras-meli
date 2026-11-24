@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extras MELI — Painel Operacional</title>
+<style>
+  :root{
+    --navy:#1E2448; --red:#E11E25;
+    --bg:#eef0f4; --card:#ffffff; --text:#1E2448; --muted:#6b7280; --border:#e4e7ee;
+    --good:#1a9e5f; --bad:#E11E25; --warn:#d97706; --pend:#8b93a3; --chip:#f3f5f9;
+  }
+  [data-theme="dark"]{
+    --bg:#0f1118; --card:#1a1d28; --text:#e8eaf2; --muted:#9aa0b0; --border:#2a2e3c;
+    --good:#2bbd77; --bad:#ff5a5f; --warn:#e8a33d; --pend:#7b8294; --chip:#242836;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text);
+        font-family:-apple-system,"Segoe UI",Roboto,Arial,sans-serif; font-size:14px; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:16px; }
+  header{ background:var(--navy); color:#fff; border-radius:14px; padding:14px 18px;
+          display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  header .title{ font-size:17px; font-weight:600; display:flex; align-items:center; gap:9px; }
+  header .dot{ width:9px; height:9px; border-radius:50%; background:var(--red); }
+  .controls{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .chip{ font-size:13px; padding:6px 13px; border-radius:999px; cursor:pointer;
+         background:rgba(255,255,255,.12); color:#dfe3ee; border:none; }
+  .chip.active{ background:var(--red); color:#fff; font-weight:600; }
+  .meta{ font-size:12px; color:#c3c8d6; display:flex; align-items:center; gap:6px; }
+  .icobtn{ background:rgba(255,255,255,.12); border:none; color:#fff; cursor:pointer;
+           width:32px; height:32px; border-radius:8px; font-size:15px; }
+  .daterange{ display:none; gap:8px; align-items:center; margin-top:10px; }
+  .daterange.show{ display:flex; }
+  .daterange input{ background:var(--card); color:var(--text); border:1px solid var(--border);
+                    border-radius:8px; padding:6px 9px; font-size:13px; }
+  .kpis{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; margin:14px 0; }
+  @media(max-width:860px){ .kpis{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:520px){ .kpis{ grid-template-columns:repeat(2,1fr); } }
+  .kpi{ background:var(--card); border-radius:12px; padding:13px 15px; border-top:3px solid var(--navy); }
+  .kpi .lbl{ font-size:12px; color:var(--muted); margin-bottom:3px; }
+  .kpi .val{ font-size:26px; font-weight:700; line-height:1.1; }
+  .kpi .sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .kpi.aceitos{ border-top-color:var(--good); }
+  .kpi.recusados{ border-top-color:var(--bad); }
+  .kpi.expirados{ border-top-color:var(--warn); }
+  .kpi.pendentes{ border-top-color:var(--pend); }
+  .kpi.sla{ border-top-color:var(--red); }
+  .grid3{ display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:10px; margin-bottom:14px; }
+  @media(max-width:860px){ .grid3{ grid-template-columns:1fr; } }
+  .card{ background:var(--card); border-radius:12px; padding:14px 16px; border:1px solid var(--border); }
+  .card h3{ margin:0 0 10px; font-size:13px; font-weight:600; color:var(--muted); }
+  .chartbox{ position:relative; height:200px; }
+  .filters{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .filters label{ font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:3px; }
+  .filters select{ background:var(--card); color:var(--text); border:1px solid var(--border);
+                   border-radius:8px; padding:7px 10px; font-size:13px; min-width:150px; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; color:var(--muted); font-weight:600; padding:9px 11px; border-bottom:1px solid var(--border); }
+  td{ padding:9px 11px; border-bottom:1px solid var(--border); }
+  .badge{ font-size:11.5px; padding:3px 9px; border-radius:999px; font-weight:600; display:inline-block; }
+  .b-aceito{ background:rgba(26,158,95,.15); color:var(--good); }
+  .b-recusado{ background:rgba(225,30,37,.13); color:var(--bad); }
+  .b-expirado{ background:rgba(217,119,6,.15); color:var(--warn); }
+  .b-pendente{ background:rgba(139,147,163,.18); color:var(--pend); }
+  .msg{ background:var(--card); border:1px solid var(--border); border-radius:12px;
+        padding:14px 16px; color:var(--muted); font-size:13px; }
+  .err{ color:var(--bad); }
+  .empty{ text-align:center; color:var(--muted); padding:22px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title"><span class="dot"></span> Extras MELI — Painel Operacional</div>
+    <div>
+      <div class="controls">
+        <button class="chip active" data-period="hoje">Hoje</button>
+        <button class="chip" data-period="ontem">Ontem</button>
+        <button class="chip" data-period="semana">Semana</button>
+        <button class="chip" data-period="custom">Personalizado</button>
+        <span class="meta"><span id="refreshInfo">atualizando…</span></span>
+        <button class="icobtn" id="themeBtn" title="Tema claro/escuro">◐</button>
+      </div>
+      <div class="daterange" id="dateRange">
+        <input type="date" id="dFrom"><span style="color:#c3c8d6;">até</span><input type="date" id="dTo">
+      </div>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi ofertados"><div class="lbl">Ofertados</div><div class="val" id="kOfertados">—</div><div class="sub">disparados no período</div></div>
+    <div class="kpi aceitos"><div class="lbl">Aceitos</div><div class="val" id="kAceitos">—</div><div class="sub" id="kAceitosPct">—</div></div>
+    <div class="kpi recusados"><div class="lbl">Recusados</div><div class="val" id="kRecusados">—</div><div class="sub">negados pela operação</div></div>
+    <div class="kpi expirados"><div class="lbl">Expirados</div><div class="val" id="kExpirados">—</div><div class="sub">sem resposta em 8h</div></div>
+    <div class="kpi pendentes"><div class="lbl">Pendentes</div><div class="val" id="kPendentes">—</div><div class="sub">aguardando (dentro do prazo)</div></div>
+    <div class="kpi sla"><div class="lbl">SLA médio</div><div class="val" id="kSla">—</div><div class="sub">envio → resposta</div></div>
+  </div>
+
+  <div class="grid3">
+    <div class="card"><h3 id="volTitle">Volume por hora</h3><div class="chartbox"><canvas id="chartVolume" role="img" aria-label="Volume de fretes ofertados no período"></canvas></div></div>
+    <div class="card"><h3>Desfecho</h3><div class="chartbox"><canvas id="chartDonut" role="img" aria-label="Distribuição de desfecho das ofertas"></canvas></div></div>
+    <div class="card"><h3>SLA médio por operador</h3><div class="chartbox"><canvas id="chartSla" role="img" aria-label="SLA médio de resposta por operador"></canvas></div></div>
+  </div>
+
+  <div class="filters">
+    <label>Operador<select id="fOperador"><option value="">Todos</option></select></label>
+    <label>Rota<select id="fRota"><option value="">Todas</option></select></label>
+    <label>Tipologia<select id="fTipologia"><option value="">Todas</option></select></label>
+  </div>
+
+  <div class="card" style="padding:0; overflow:hidden;">
+    <table>
+      <thead><tr>
+        <th>Envio</th><th>Rota</th><th>Tipologia</th><th>Conc.</th><th>Status</th><th>Operador</th><th>SLA</th>
+      </tr></thead>
+      <tbody id="tbody"><tr><td colspan="7" class="empty">Carregando…</td></tr></tbody>
+    </table>
+  </div>
+
+  <p id="statusMsg" class="msg" style="margin-top:12px; display:none;"></p>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+/* ===================== CONFIGURAÇÃO — PREENCHA AQUI ===================== */
+const SUPABASE_URL = "COLE_AQUI_A_URL";          // ex: https://ezztiammjdkyhurqjecn.supabase.co
+const SUPABASE_KEY = "COLE_AQUI_A_CHAVE_PUBLISHABLE"; // a chave PUBLISHABLE (NUNCA a secret!)
+const REFRESH_MS   = 20000;  // auto-atualização (20s)
+const EXPIRY_HOURS = 8;      // alerta sem resposta após 8h = Expirado
+/* ======================================================================= */
+
+const COR = { aceito:'#1a9e5f', recusado:'#E11E25', expirado:'#d97706', pendente:'#8b93a3', navy:'#1E2448' };
+let state = { rows:[], period:'hoje', from:null, to:null, fOp:'', fRt:'', fTp:'' };
+let charts = { vol:null, donut:null, sla:null };
+let lastFetch = null;
+
+function statusDe(r){
+  if(r.acao === 'assumido') return 'aceito';
+  if(r.acao === 'recusado') return 'recusado';
+  const horas = (Date.now() - new Date(r.enviado_em).getTime()) / 3600000;
+  return horas >= EXPIRY_HOURS ? 'expirado' : 'pendente';
+}
+function rotaLegivel(k){ return (k||'').replaceAll('_',' ➔ '); }
+function nomeOp(e){ return e ? String(e).split('@')[0] : '—'; }
+function fmtHora(iso){ const d=new Date(iso); return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function fmtSla(seg){ if(seg==null) return '—'; const m=Math.floor(seg/60), s=Math.round(seg%60);
+  if(m>=60){ const h=Math.floor(m/60); return h+'h '+(m%60)+'m'; } return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+
+function inicioSemana(){ const d=new Date(); d.setHours(0,0,0,0); const dia=(d.getDay()+6)%7; d.setDate(d.getDate()-dia); return d; }
+function noPeriodo(r){
+  const t = new Date(r.enviado_em); const hoje = new Date(); hoje.setHours(0,0,0,0);
+  if(state.period==='hoje'){ return t >= hoje; }
+  if(state.period==='ontem'){ const o=new Date(hoje); o.setDate(o.getDate()-1); return t>=o && t<hoje; }
+  if(state.period==='semana'){ return t >= inicioSemana(); }
+  if(state.period==='custom'){
+    if(state.from){ if(t < new Date(state.from+'T00:00:00')) return false; }
+    if(state.to){ const to=new Date(state.to+'T00:00:00'); to.setDate(to.getDate()+1); if(t >= to) return false; }
+    return true;
+  }
+  return true;
+}
+function filtradas(){
+  return state.rows.filter(r =>
+    noPeriodo(r) &&
+    (!state.fOp || r.operador_responsavel===state.fOp) &&
+    (!state.fRt || r.rota_key===state.fRt) &&
+    (!state.fTp || r.tipologia===state.fTp)
+  ).map(r => ({...r, _status: statusDe(r)}));
+}
+
+function renderKPIs(rows){
+  const n = rows.length;
+  const c = {aceito:0,recusado:0,expirado:0,pendente:0};
+  rows.forEach(r => c[r._status]++);
+  const slas = rows.filter(r => r.sla_segundos!=null).map(r => r.sla_segundos);
+  const slaMed = slas.length ? Math.round(slas.reduce((a,b)=>a+b,0)/slas.length) : null;
+  document.getElementById('kOfertados').textContent = n;
+  document.getElementById('kAceitos').textContent = c.aceito;
+  document.getElementById('kAceitosPct').textContent = n ? Math.round(c.aceito/n*100)+'% de conversão' : '—';
+  document.getElementById('kRecusados').textContent = c.recusado;
+  document.getElementById('kExpirados').textContent = c.expirado;
+  document.getElementById('kPendentes').textContent = c.pendente;
+  document.getElementById('kSla').textContent = fmtSla(slaMed);
+}
+
+function renderVolume(rows){
+  const porDia = (state.period==='semana' || state.period==='custom');
+  document.getElementById('volTitle').textContent = porDia ? 'Volume por dia' : 'Volume por hora';
+  let labels=[], dados=[];
+  if(porDia){
+    const map={};
+    rows.forEach(r=>{ const d=new Date(r.enviado_em); const k=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}); map[k]=(map[k]||0)+1; });
+    labels=Object.keys(map); dados=Object.values(map);
+  } else {
+    labels=Array.from({length:24},(_,h)=>String(h).padStart(2,'0')+'h');
+    dados=Array(24).fill(0);
+    rows.forEach(r=>{ dados[new Date(r.enviado_em).getHours()]++; });
+  }
+  desenha('vol','bar',{labels,datasets:[{label:'Ofertados',data:dados,backgroundColor:COR.navy,borderRadius:4}]},
+    {scales:{y:{beginAtZero:true,ticks:{precision:0}}},plugins:{legend:{display:false}}});
+}
+function renderDonut(rows){
+  const c={aceito:0,recusado:0,expirado:0,pendente:0}; rows.forEach(r=>c[r._status]++);
+  desenha('donut','doughnut',{labels:['Aceito','Recusado','Expirado','Pendente'],
+    datasets:[{data:[c.aceito,c.recusado,c.expirado,c.pendente],
+      backgroundColor:[COR.aceito,COR.recusado,COR.expirado,COR.pendente],borderWidth:0}]},
+    {cutout:'62%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}}});
+}
+function renderSlaOp(rows){
+  const map={};
+  rows.filter(r=>r.sla_segundos!=null).forEach(r=>{ const o=nomeOp(r.operador_responsavel);
+    (map[o]=map[o]||[]).push(r.sla_segundos); });
+  const labels=Object.keys(map);
+  const dados=labels.map(o=>Math.round(map[o].reduce((a,b)=>a+b,0)/map[o].length/60*10)/10);
+  desenha('sla','bar',{labels,datasets:[{label:'min',data:dados,backgroundColor:COR.navy,borderRadius:4}]},
+    {indexAxis:'y',scales:{x:{beginAtZero:true,title:{display:true,text:'minutos'}}},plugins:{legend:{display:false}}});
+}
+function desenha(key,type,data,opts){
+  const map={vol:'chartVolume',donut:'chartDonut',sla:'chartSla'};
+  if(charts[key]) charts[key].destroy();
+  charts[key]=new Chart(document.getElementById(map[key]),{type,data,
+    options:Object.assign({responsive:true,maintainAspectRatio:false},opts)});
+}
+
+function renderTabela(rows){
+  const tb=document.getElementById('tbody');
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="7" class="empty">Nenhuma oferta no período/filtros selecionados.</td></tr>'; return; }
+  const cls={aceito:'b-aceito',recusado:'b-recusado',expirado:'b-expirado',pendente:'b-pendente'};
+  const nome={aceito:'Assumido',recusado:'Recusado',expirado:'Expirado',pendente:'Pendente'};
+  tb.innerHTML = rows.slice().sort((a,b)=>new Date(b.enviado_em)-new Date(a.enviado_em)).map(r=>
+    `<tr><td>${fmtHora(r.enviado_em)}</td><td>${rotaLegivel(r.rota_key)}</td><td>${r.tipologia||'—'}</td>`+
+    `<td>${r.competing_carriers??'—'}</td><td><span class="badge ${cls[r._status]}">${nome[r._status]}</span></td>`+
+    `<td>${nomeOp(r.operador_responsavel)}</td><td>${fmtSla(r.sla_segundos)}</td></tr>`).join('');
+}
+
+function popularFiltros(){
+  const ops=[...new Set(state.rows.map(r=>r.operador_responsavel).filter(Boolean))].sort();
+  const rts=[...new Set(state.rows.map(r=>r.rota_key).filter(Boolean))].sort();
+  const tps=[...new Set(state.rows.map(r=>r.tipologia).filter(Boolean))].sort();
+  preenche('fOperador',ops,state.fOp,nomeOp); preenche('fRota',rts,state.fRt,rotaLegivel); preenche('fTipologia',tps,state.fTp);
+}
+function preenche(id,vals,sel,fmt){
+  const el=document.getElementById(id); const atual=el.children[0].outerHTML;
+  el.innerHTML=atual+vals.map(v=>`<option value="${v}" ${v===sel?'selected':''}>${fmt?fmt(v):v}</option>`).join('');
+}
+
+function renderTudo(){
+  const rows=filtradas();
+  renderKPIs(rows); renderVolume(rows); renderDonut(rows); renderSlaOp(rows); renderTabela(rows);
+}
+
+async function carregar(){
+  const msg=document.getElementById('statusMsg');
+  if(SUPABASE_URL.includes('COLE_AQUI')||SUPABASE_KEY.includes('COLE_AQUI')){
+    msg.style.display='block'; msg.className='msg err';
+    msg.textContent='Preencha SUPABASE_URL e SUPABASE_KEY (chave publishable) no topo do arquivo.'; return;
+  }
+  try{
+    const url=`${SUPABASE_URL}/rest/v1/vw_sla_respostas?select=*&order=enviado_em.desc&limit=3000`;
+    const resp=await fetch(url,{headers:{apikey:SUPABASE_KEY,Authorization:'Bearer '+SUPABASE_KEY}});
+    if(!resp.ok) throw new Error('HTTP '+resp.status+' — '+(await resp.text()).slice(0,200));
+    state.rows=await resp.json(); lastFetch=Date.now(); msg.style.display='none';
+    popularFiltros(); renderTudo();
+  }catch(e){
+    msg.style.display='block'; msg.className='msg err'; msg.textContent='Erro ao ler o Supabase: '+e.message;
+  }
+}
+
+/* eventos */
+document.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); state.period=b.dataset.period;
+  document.getElementById('dateRange').classList.toggle('show',state.period==='custom');
+  renderTudo();
+}));
+document.getElementById('dFrom').addEventListener('change',e=>{state.from=e.target.value;renderTudo();});
+document.getElementById('dTo').addEventListener('change',e=>{state.to=e.target.value;renderTudo();});
+document.getElementById('fOperador').addEventListener('change',e=>{state.fOp=e.target.value;renderTudo();});
+document.getElementById('fRota').addEventListener('change',e=>{state.fRt=e.target.value;renderTudo();});
+document.getElementById('fTipologia').addEventListener('change',e=>{state.fTp=e.target.value;renderTudo();});
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  const d=document.documentElement; d.setAttribute('data-theme', d.getAttribute('data-theme')==='dark'?'light':'dark');
+});
+
+/* ticker "atualizado há Xs" + auto-refresh */
+setInterval(()=>{ if(lastFetch){ const s=Math.round((Date.now()-lastFetch)/1000);
+  document.getElementById('refreshInfo').textContent='atualizado há '+s+'s'; } },1000);
+setInterval(carregar, REFRESH_MS);
+document.documentElement.setAttribute('data-theme','light');
+carregar();
+</script>
+</body>
+</html>
