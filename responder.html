@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confirmação · Extras MELI</title>
+<style>
+  :root{--navy:#1E2448;--red:#E11E25}
+  *{box-sizing:border-box}
+  body{margin:0;background:#eef1f6;color:#1b2235;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;width:100%;max-width:440px;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(20,28,60,.18)}
+  .top{background:var(--navy);color:#fff;padding:18px 22px}
+  .top h1{margin:0;font-size:18px;font-weight:700}
+  .top p{margin:4px 0 0;font-size:13px;opacity:.85}
+  .body{padding:22px}
+  .resumo{background:#f4f6fb;border-radius:12px;padding:14px;margin-bottom:18px;font-size:14px;line-height:1.5}
+  .resumo .rota{font-weight:700;font-size:16px;color:var(--navy)}
+  .tetos{display:flex;gap:10px;margin-top:10px}
+  .teto{flex:1;background:#fff;border:1px solid #e2e7f0;border-radius:10px;padding:8px 10px;text-align:center}
+  .teto small{display:block;color:#6b7390;font-size:11px}
+  .teto b{font-size:15px}
+  label{display:block;font-size:13px;font-weight:600;margin:12px 0 5px;color:#2a3350}
+  .req{color:var(--red)}
+  input,textarea{width:100%;padding:11px 12px;border:1px solid #cfd6e4;border-radius:10px;font-size:15px;font-family:inherit;background:#fff}
+  input:focus,textarea:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(30,36,72,.12)}
+  .btn{width:100%;margin-top:18px;padding:13px;border:none;border-radius:10px;font-size:16px;font-weight:700;color:#fff;cursor:pointer}
+  .btn:disabled{opacity:.6;cursor:default}
+  .btn.ok{background:#1e7d45}
+  .btn.no{background:var(--red)}
+  .hint{font-size:12px;color:#6b7390;margin-top:14px;text-align:center}
+  .big{font-size:40px;text-align:center;margin:4px 0}
+  .center{text-align:center}
+</style>
+</head>
+<body>
+<div class="card" id="app"></div>
+<script>
+// ======== CONFIG — preencha com os dados do seu projeto Supabase ========
+const SUPABASE_URL = "COLE_AQUI_A_URL";            // ex.: https://ezztiammjdkyhurqjecn.supabase.co  (sem barra no fim)
+const SUPABASE_ANON_KEY = "COLE_AQUI_A_CHAVE_ANON"; // a chave "anon/publishable"
+// ========================================================================
+
+const NAVY = "#1E2448", RED = "#E11E25";
+const qs = new URLSearchParams(location.search);
+const P = (k) => qs.get(k) || "";
+
+function brl(v){ if(v===null||v===undefined||isNaN(+v)) return "—"; return "R$ "+(+v).toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function parseBRL(s){ if(!s) return null; const l=String(s).replace(/[^\d.,-]/g,"").replace(/\.(?=\d{3}(\D|$))/g,"").replace(",","."); const n=parseFloat(l); return isNaN(n)?null:Math.round(n*100)/100; }
+
+const app = document.getElementById("app");
+const render = (html) => { app.innerHTML = html; };
+
+const a = P("a"), o = P("o"), r = P("r"), acao = P("acao");
+const rota = P("rota"), tip = P("tip"), apg = P("apg"), ti = P("ti"), tm = P("tm");
+
+function telaErro(msg){
+  render(`<div class="top" style="background:${RED}"><h1>Não foi possível abrir</h1></div>
+    <div class="body center"><p>${esc(msg)}</p><p class="hint">Pode fechar esta aba.</p></div>`);
+}
+
+function resumoHtml(){
+  return `<div class="resumo">
+    <div class="rota">${esc(rota||"—")}</div>
+    <div>${esc(tip||"—")} · ${esc(apg||"—")}</div>
+    <div class="tetos">
+      <div class="teto"><small>🎯 Ideal · 12%</small><b>${ti?brl(ti):"—"}</b></div>
+      <div class="teto"><small>⛔ Máximo · 10%</small><b>${tm?brl(tm):"—"}</b></div>
+    </div></div>`;
+}
+
+function formAssumir(){
+  render(`<div class="top"><h1>✅ Assumir frete</h1><p>Confirme os dados do aceite</p></div>
+    <div class="body">${resumoHtml()}
+    <form id="f">
+      <label>Operador responsável (seu nome) <span class="req">*</span></label>
+      <input name="operador" required autocomplete="off" placeholder="Seu nome">
+      <label>Quanto foi o custo? (R$) <span class="req">*</span></label>
+      <input name="valor" required inputmode="decimal" placeholder="Ex.: 2050,00">
+      <label>Transportador alocado</label>
+      <input name="transportador" autocomplete="off" placeholder="Opcional">
+      <label>Placa</label>
+      <input name="placa" autocomplete="off" placeholder="Opcional">
+      <button class="btn ok" type="submit">Confirmar aceite</button>
+      <p class="hint" id="msg">Registra o aceite e avisa o faturamento por e-mail.</p>
+    </form></div>`);
+  document.getElementById("f").addEventListener("submit", onSubmit);
+}
+
+function formRecusar(){
+  render(`<div class="top" style="background:${RED}"><h1>❌ Recusar oferta</h1><p>Confirme a recusa</p></div>
+    <div class="body">${resumoHtml()}
+    <form id="f">
+      <label>Operador responsável (seu nome) <span class="req">*</span></label>
+      <input name="operador" required autocomplete="off" placeholder="Seu nome">
+      <label>Motivo (opcional)</label>
+      <textarea name="motivo" rows="3" placeholder="Ex.: sem capacidade na janela"></textarea>
+      <button class="btn no" type="submit">Confirmar recusa</button>
+      <p class="hint" id="msg"></p>
+    </form></div>`);
+  document.getElementById("f").addEventListener("submit", onSubmit);
+}
+
+async function onSubmit(e){
+  e.preventDefault();
+  const f = e.target;
+  const btn = f.querySelector("button");
+  const msg = document.getElementById("msg");
+  const operador = f.operador.value.trim();
+  if(!operador){ msg.textContent = "Informe o operador responsável."; return; }
+
+  const row = { alerta_id:+a, oferta_id:+o, request_id:+r, acao, operador_responsavel:operador };
+  if(acao==="assumido"){
+    const valor = parseBRL(f.valor.value);
+    if(valor===null){ msg.textContent = "Informe um valor fechado válido."; return; }
+    row.valor_fechado = valor;
+    const t = f.transportador.value.trim(), p = f.placa.value.trim();
+    if(t) row.transportador_alocado = t;
+    if(p) row.placa_veiculo = p;
+  } else {
+    const m = f.motivo.value.trim();
+    if(m) row.observacoes = m;
+  }
+
+  const rotulo = acao==="assumido" ? "Confirmar aceite" : "Confirmar recusa";
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify(row),
+    });
+    if(resp.status === 201){ sucesso(operador, row); return; }
+    if(resp.status === 409){ jaRespondida(); return; }
+    await resp.text();
+    msg.textContent = "Erro ao gravar (" + resp.status + "). Tente novamente.";
+    btn.disabled = false; btn.textContent = rotulo;
+  }catch(err){
+    msg.textContent = "Falha de conexão. Tente novamente.";
+    btn.disabled = false; btn.textContent = rotulo;
+  }
+}
+
+function sucesso(operador, row){
+  if(acao==="assumido"){
+    render(`<div class="top" style="background:#1e7d45"><h1>✅ Aceite registrado</h1></div>
+      <div class="body center"><div class="big">🎉</div>
+        <p><b>${esc(operador)}</b> assumiu o frete por <b>${brl(row.valor_fechado)}</b>.</p>
+        ${row.transportador_alocado?`<p>Transportador: <b>${esc(row.transportador_alocado)}</b>${row.placa_veiculo?" · "+esc(row.placa_veiculo):""}</p>`:""}
+        <p class="hint">O faturamento será avisado por e-mail. Pode fechar esta aba.</p></div>`);
+  } else {
+    render(`<div class="top" style="background:${RED}"><h1>Recusa registrada</h1></div>
+      <div class="body center"><div class="big">✔️</div>
+        <p><b>${esc(operador)}</b> recusou esta oferta.</p>
+        <p class="hint">Pode fechar esta aba.</p></div>`);
+  }
+}
+
+function jaRespondida(){
+  render(`<div class="top"><h1>Oferta já respondida</h1></div>
+    <div class="body center"><div class="big">✔️</div>
+      <p>Esta oferta já recebeu uma resposta — não dá pra responder duas vezes.</p>
+      <p class="hint">Pode fechar esta aba.</p></div>`);
+}
+
+// início
+if(!a || !["assumido","recusado"].includes(acao)) telaErro("Link inválido ou incompleto.");
+else if(acao==="assumido") formAssumir();
+else formRecusar();
+</script>
+</body>
+</html>
