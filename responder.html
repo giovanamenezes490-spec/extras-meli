@@ -28,6 +28,9 @@
   .btn:disabled{opacity:.6;cursor:default}
   .btn.ok{background:#1e7d45}
   .btn.no{background:var(--red)}
+  .btn.ghost{background:#fff;color:#2a3350;border:1px solid #cfd6e4;margin-top:10px}
+  .aviso{background:#fff7e6;border:1px solid #ffd98a;border-radius:12px;padding:14px 16px;font-size:14px;line-height:1.5;color:#6b4e00}
+  .aviso b{color:#8a4b00}
   .hint{font-size:12px;color:#6b7390;margin-top:14px;text-align:center}
   .big{font-size:40px;text-align:center;margin:4px 0}
   .center{text-align:center}
@@ -37,8 +40,8 @@
 <div class="card" id="app"></div>
 <script>
 // ======== CONFIG — preencha com os dados do seu projeto Supabase ========
-const SUPABASE_URL = "https://ezztiammjdkyhurqjecn.supabase.co";            // ex.: https://ezztiammjdkyhurqjecn.supabase.co  (sem barra no fim)
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6enRpYW1tamRreWh1cnFqZWNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MzI2NTcsImV4cCI6MjExMDAwODY1N30.6cE4x8lLp1zF2rsq4rd6sMd78UgDFHdQEsbHA5nbo3A"; // a chave "anon/publishable"
+const SUPABASE_URL = "https://ezztiammjdkyhurqjecn.supabase.co"; // já preenchido
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6enRpYW1tamRreWh1cnFqZWNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MzI2NTcsImV4cCI6MjExMDAwODY1N30.6cE4x8lLp1zF2rsq4rd6sMd78UgDFHdQEsbHA5nbo3A"; // <-- COLE sua chave anon (copie do painel.html ou do responder.html antigo)
 // ========================================================================
 
 const NAVY = "#1E2448", RED = "#E11E25";
@@ -51,6 +54,12 @@ function parseBRL(s){ if(!s) return null; const l=String(s).replace(/[^\d.,-]/g,
 
 const app = document.getElementById("app");
 const render = (html) => { app.innerHTML = html; };
+
+const SB_HEADERS = {
+  "apikey": SUPABASE_ANON_KEY,
+  "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+  "Content-Type": "application/json",
+};
 
 const a = P("a"), o = P("o"), r = P("r"), acao = P("acao");
 const rota = P("rota"), tip = P("tip"), apg = P("apg"), ti = P("ti"), tm = P("tm");
@@ -70,8 +79,52 @@ function resumoHtml(){
     </div></div>`;
 }
 
+// ===== ETAPA 1: confirmação do aceite automático =====
+function telaConfirmacao(){
+  render(`<div class="top"><h1>✅ Assumir frete</h1><p>Confirmação do aceite automático</p></div>
+    <div class="body">${resumoHtml()}
+    <div class="aviso">⚠️ <b>Atenção:</b> ao confirmar, o robô realizará o <b>aceite automático desta rota diretamente no sistema do Meli</b>. Deseja prosseguir?</div>
+    <button class="btn ok" id="bConf">Confirmar aceite automático</button>
+    <button class="btn ghost" id="bCanc">Cancelar</button>
+    <p class="hint" id="msg"></p></div>`);
+  document.getElementById("bCanc").addEventListener("click", telaCancelado);
+  document.getElementById("bConf").addEventListener("click", confirmarAceite);
+}
+
+function telaCancelado(){
+  render(`<div class="top"><h1>Operação cancelada</h1></div>
+    <div class="body center"><div class="big">↩️</div>
+      <p>Nenhum aceite foi disparado.</p>
+      <p class="hint">Pode fechar esta aba.</p></div>`);
+}
+
+async function confirmarAceite(){
+  const btn = document.getElementById("bConf");
+  const msg = document.getElementById("msg");
+  btn.disabled = true; btn.textContent = "Disparando aceite...";
+  // grava a linha na fila -> o robô aceita no Meli. O formulário vem em seguida.
+  const row = {
+    alerta_id:+a, oferta_id:+o, request_id:+r, acao:"assumido",
+    meli_status:"AGUARDANDO_ACEITE_MELI",
+    confirmado_em: new Date().toISOString(),
+  };
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
+      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
+    });
+    if(resp.status === 201 || resp.status === 409){ formAssumir(); return; } // 409 = já confirmado antes
+    await resp.text();
+    msg.textContent = "Erro ao disparar ("+resp.status+"). Tente novamente.";
+    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
+  }catch(err){
+    msg.textContent = "Falha de conexão. Tente novamente.";
+    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
+  }
+}
+
+// ===== ETAPA 2: formulário (preenche os dados; o aceite já está rodando) =====
 function formAssumir(){
-  render(`<div class="top"><h1>✅ Assumir frete</h1><p>Confirme os dados do aceite</p></div>
+  render(`<div class="top" style="background:#1e7d45"><h1>🤖 Aceite em andamento</h1><p>Agora preencha os dados do frete</p></div>
     <div class="body">${resumoHtml()}
     <form id="f">
       <label>Operador responsável (seu nome) <span class="req">*</span></label>
@@ -82,12 +135,50 @@ function formAssumir(){
       <input name="transportador" autocomplete="off" placeholder="Opcional">
       <label>Placa</label>
       <input name="placa" autocomplete="off" placeholder="Opcional">
-      <button class="btn ok" type="submit">Confirmar aceite</button>
-      <p class="hint" id="msg">Registra o aceite e avisa o faturamento por e-mail.</p>
+      <button class="btn ok" type="submit">Salvar dados</button>
+      <p class="hint" id="msg">O robô já está aceitando no Meli. Preencha e o faturamento será avisado.</p>
     </form></div>`);
-  document.getElementById("f").addEventListener("submit", onSubmit);
+  document.getElementById("f").addEventListener("submit", onSalvarAssumir);
 }
 
+async function onSalvarAssumir(e){
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector("button"), msg = document.getElementById("msg");
+  const operador = f.operador.value.trim();
+  if(!operador){ msg.textContent = "Informe o operador responsável."; return; }
+  const valor = parseBRL(f.valor.value);
+  if(valor===null){ msg.textContent = "Informe um valor fechado válido."; return; }
+
+  const row = { operador_responsavel:operador, valor_fechado:valor };
+  const t = f.transportador.value.trim(), p = f.placa.value.trim();
+  if(t) row.transportador_alocado = t;
+  if(p) row.placa_veiculo = p;
+
+  btn.disabled = true; btn.textContent = "Salvando...";
+  try{
+    // atualiza a MESMA linha criada na confirmação (casada pelo alerta_id)
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao?alerta_id=eq.${+a}`, {
+      method:"PATCH", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
+    });
+    if(resp.status === 204 || resp.status === 200){ sucessoAssumir(operador, row); return; }
+    await resp.text();
+    msg.textContent = "Erro ao salvar ("+resp.status+"). Tente novamente.";
+    btn.disabled = false; btn.textContent = "Salvar dados";
+  }catch(err){
+    msg.textContent = "Falha de conexão. Tente novamente.";
+    btn.disabled = false; btn.textContent = "Salvar dados";
+  }
+}
+
+function sucessoAssumir(operador, row){
+  render(`<div class="top" style="background:#1e7d45"><h1>✅ Tudo certo!</h1></div>
+    <div class="body center"><div class="big">🎉</div>
+      <p><b>${esc(operador)}</b> assumiu o frete por <b>${brl(row.valor_fechado)}</b>.</p>
+      ${row.transportador_alocado?`<p>Transportador: <b>${esc(row.transportador_alocado)}</b>${row.placa_veiculo?" · "+esc(row.placa_veiculo):""}</p>`:""}
+      <p class="hint">O robô aceitou a rota no Meli e o faturamento será avisado por e-mail. Pode fechar esta aba.</p></div>`);
+}
+
+// ===== RECUSAR (fluxo original, um único registro) =====
 function formRecusar(){
   render(`<div class="top" style="background:${RED}"><h1>❌ Recusar oferta</h1><p>Confirme a recusa</p></div>
     <div class="body">${resumoHtml()}
@@ -99,67 +190,39 @@ function formRecusar(){
       <button class="btn no" type="submit">Confirmar recusa</button>
       <p class="hint" id="msg"></p>
     </form></div>`);
-  document.getElementById("f").addEventListener("submit", onSubmit);
+  document.getElementById("f").addEventListener("submit", onRecusar);
 }
 
-async function onSubmit(e){
+async function onRecusar(e){
   e.preventDefault();
-  const f = e.target;
-  const btn = f.querySelector("button");
-  const msg = document.getElementById("msg");
+  const f = e.target, btn = f.querySelector("button"), msg = document.getElementById("msg");
   const operador = f.operador.value.trim();
   if(!operador){ msg.textContent = "Informe o operador responsável."; return; }
+  const row = { alerta_id:+a, oferta_id:+o, request_id:+r, acao:"recusado", operador_responsavel:operador };
+  const m = f.motivo.value.trim();
+  if(m) row.observacoes = m;
 
-  const row = { alerta_id:+a, oferta_id:+o, request_id:+r, acao, operador_responsavel:operador };
-  if(acao==="assumido"){
-    const valor = parseBRL(f.valor.value);
-    if(valor===null){ msg.textContent = "Informe um valor fechado válido."; return; }
-    row.valor_fechado = valor;
-    const t = f.transportador.value.trim(), p = f.placa.value.trim();
-    if(t) row.transportador_alocado = t;
-    if(p) row.placa_veiculo = p;
-  } else {
-    const m = f.motivo.value.trim();
-    if(m) row.observacoes = m;
-  }
-
-  const rotulo = acao==="assumido" ? "Confirmar aceite" : "Confirmar recusa";
   btn.disabled = true; btn.textContent = "Enviando...";
   try{
     const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-      },
-      body: JSON.stringify(row),
+      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
     });
-    if(resp.status === 201){ sucesso(operador, row); return; }
+    if(resp.status === 201){ sucessoRecusar(operador); return; }
     if(resp.status === 409){ jaRespondida(); return; }
     await resp.text();
-    msg.textContent = "Erro ao gravar (" + resp.status + "). Tente novamente.";
-    btn.disabled = false; btn.textContent = rotulo;
+    msg.textContent = "Erro ao gravar ("+resp.status+"). Tente novamente.";
+    btn.disabled = false; btn.textContent = "Confirmar recusa";
   }catch(err){
     msg.textContent = "Falha de conexão. Tente novamente.";
-    btn.disabled = false; btn.textContent = rotulo;
+    btn.disabled = false; btn.textContent = "Confirmar recusa";
   }
 }
 
-function sucesso(operador, row){
-  if(acao==="assumido"){
-    render(`<div class="top" style="background:#1e7d45"><h1>✅ Aceite registrado</h1></div>
-      <div class="body center"><div class="big">🎉</div>
-        <p><b>${esc(operador)}</b> assumiu o frete por <b>${brl(row.valor_fechado)}</b>.</p>
-        ${row.transportador_alocado?`<p>Transportador: <b>${esc(row.transportador_alocado)}</b>${row.placa_veiculo?" · "+esc(row.placa_veiculo):""}</p>`:""}
-        <p class="hint">O faturamento será avisado por e-mail. Pode fechar esta aba.</p></div>`);
-  } else {
-    render(`<div class="top" style="background:${RED}"><h1>Recusa registrada</h1></div>
-      <div class="body center"><div class="big">✔️</div>
-        <p><b>${esc(operador)}</b> recusou esta oferta.</p>
-        <p class="hint">Pode fechar esta aba.</p></div>`);
-  }
+function sucessoRecusar(operador){
+  render(`<div class="top" style="background:${RED}"><h1>Recusa registrada</h1></div>
+    <div class="body center"><div class="big">✔️</div>
+      <p><b>${esc(operador)}</b> recusou esta oferta.</p>
+      <p class="hint">Pode fechar esta aba.</p></div>`);
 }
 
 function jaRespondida(){
@@ -171,7 +234,7 @@ function jaRespondida(){
 
 // início
 if(!a || !["assumido","recusado"].includes(acao)) telaErro("Link inválido ou incompleto.");
-else if(acao==="assumido") formAssumir();
+else if(acao==="assumido") telaConfirmacao();
 else formRecusar();
 </script>
 </body>
