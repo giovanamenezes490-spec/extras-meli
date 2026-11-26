@@ -34,6 +34,8 @@
   .hint{font-size:12px;color:#6b7390;margin-top:14px;text-align:center}
   .big{font-size:40px;text-align:center;margin:4px 0}
   .center{text-align:center}
+  .spin{width:34px;height:34px;border:4px solid #d7def0;border-top-color:var(--navy);border-radius:50%;margin:10px auto;animation:g 1s linear infinite}
+  @keyframes g{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -41,7 +43,7 @@
 <script>
 // ======== CONFIG — preencha com os dados do seu projeto Supabase ========
 const SUPABASE_URL = "https://ezztiammjdkyhurqjecn.supabase.co"; // já preenchido
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6enRpYW1tamRreWh1cnFqZWNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MzI2NTcsImV4cCI6MjExMDAwODY1N30.6cE4x8lLp1zF2rsq4rd6sMd78UgDFHdQEsbHA5nbo3A"; // <-- COLE sua chave anon (copie do painel.html ou do responder.html antigo)
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6enRpYW1tamRreWh1cnFqZWNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MzI2NTcsImV4cCI6MjExMDAwODY1N30.6cE4x8lLp1zF2rsq4rd6sMd78UgDFHdQEsbHA5nbo3A"; // <-- COLE sua chave anon (copie do painel.html ou do responder antigo)
 // ========================================================================
 
 const NAVY = "#1E2448", RED = "#E11E25";
@@ -79,7 +81,7 @@ function resumoHtml(){
     </div></div>`;
 }
 
-// ===== ETAPA 1: confirmação do aceite automático =====
+// ===== ETAPA 1: confirmação =====
 function telaConfirmacao(){
   render(`<div class="top"><h1>✅ Assumir frete</h1><p>Confirmação do aceite automático</p></div>
     <div class="body">${resumoHtml()}
@@ -88,7 +90,7 @@ function telaConfirmacao(){
     <button class="btn ghost" id="bCanc">Cancelar</button>
     <p class="hint" id="msg"></p></div>`);
   document.getElementById("bCanc").addEventListener("click", telaCancelado);
-  document.getElementById("bConf").addEventListener("click", confirmarAceite);
+  document.getElementById("bConf").addEventListener("click", iniciarAceite);
 }
 
 function telaCancelado(){
@@ -98,26 +100,80 @@ function telaCancelado(){
       <p class="hint">Pode fechar esta aba.</p></div>`);
 }
 
-// apenas avança para o formulário; o aceite é disparado ao salvar (um registro só)
-function confirmarAceite(){
-  formAssumir();
+// ===== ETAPA 2: dispara o aceite e aguarda o resultado do robô =====
+async function iniciarAceite(){
+  const btn = document.getElementById("bConf");
+  const msg = document.getElementById("msg");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  const row = {
+    alerta_id:+a, oferta_id:+o, request_id:+r, acao:"assumido",
+    meli_status:"AGUARDANDO_ACEITE_MELI",
+    confirmado_em: new Date().toISOString(),
+  };
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
+      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
+    });
+    if(resp.status === 201 || resp.status === 409){ telaAguardando(); pollStatus(0); return; }
+    await resp.text();
+    msg.textContent = "Erro ao disparar ("+resp.status+"). Tente novamente.";
+    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
+  }catch(err){
+    msg.textContent = "Falha de conexão. Tente novamente.";
+    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
+  }
 }
 
-// ===== ETAPA 2: formulário (preenche os dados; o aceite já está rodando) =====
+function telaAguardando(){
+  render(`<div class="top"><h1>⏳ Aceitando no Meli…</h1><p>Verificando a disponibilidade da rota</p></div>
+    <div class="body center">${resumoHtml()}
+    <div class="spin"></div>
+    <p style="font-size:15px;color:#2a3350">Confirmando o aceite direto no sistema do Meli. Leva alguns segundos — <b>não feche esta aba</b>.</p></div>`);
+}
+
+async function pollStatus(tentativa){
+  if(tentativa >= 25){ telaDemorou(); return; }
+  try{
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao?alerta_id=eq.${+a}&select=meli_status,meli_erro`, { headers: SB_HEADERS });
+    if(resp.ok){
+      const arr = await resp.json();
+      const st = (arr && arr[0]) ? arr[0].meli_status : null;
+      if(st === "ACEITO_MELI"){ formAssumir(); return; }
+      if(st === "FALHA_MELI"){ telaIndisponivel(); return; }
+    }
+  }catch(err){ /* ignora e tenta de novo */ }
+  setTimeout(() => pollStatus(tentativa + 1), 2000);
+}
+
+function telaIndisponivel(){
+  render(`<div class="top" style="background:${RED}"><h1>❌ Rota não disponível</h1></div>
+    <div class="body center"><div class="big">🚫</div>
+      <p>Esta rota <b>não está mais disponível</b> — outro transportador já assumiu antes.</p>
+      <p class="hint">Nada foi fechado. Pode fechar esta aba.</p></div>`);
+}
+
+function telaDemorou(){
+  render(`<div class="top"><h1>⏳ Ainda processando</h1></div>
+    <div class="body center"><div class="big">⏳</div>
+      <p>O aceite está demorando mais que o normal. Confira no painel em instantes, ou recarregue esta página.</p>
+      <p class="hint">Pode fechar esta aba.</p></div>`);
+}
+
+// ===== ETAPA 3: formulário (rota já aceita) =====
 function formAssumir(){
-  render(`<div class="top" style="background:#1e7d45"><h1>✅ Assumir frete</h1><p>Preencha os dados — ao salvar, o robô aceita no Meli</p></div>
+  render(`<div class="top" style="background:#1e7d45"><h1>✅ Rota aceita!</h1><p>Agora preencha os dados do frete</p></div>
     <div class="body">${resumoHtml()}
     <form id="f">
       <label>Operador responsável (seu nome) <span class="req">*</span></label>
       <input name="operador" required autocomplete="off" placeholder="Seu nome">
+      <label>Transportador alocado <span class="req">*</span></label>
+      <input name="transportador" required autocomplete="off" placeholder="Nome do transportador">
       <label>Quanto foi o custo? (R$) <span class="req">*</span></label>
       <input name="valor" required inputmode="decimal" placeholder="Ex.: 2050,00">
-      <label>Transportador alocado</label>
-      <input name="transportador" autocomplete="off" placeholder="Opcional">
       <label>Placa</label>
       <input name="placa" autocomplete="off" placeholder="Opcional">
-      <button class="btn ok" type="submit">Salvar e aceitar</button>
-      <p class="hint" id="msg">Ao salvar, o robô aceita a rota no Meli e o faturamento é avisado.</p>
+      <button class="btn ok" type="submit">Salvar dados</button>
+      <p class="hint" id="msg">A rota já foi aceita no Meli. Preencha e o faturamento será avisado.</p>
     </form></div>`);
   document.getElementById("f").addEventListener("submit", onSalvarAssumir);
 }
@@ -126,34 +182,28 @@ async function onSalvarAssumir(e){
   e.preventDefault();
   const f = e.target, btn = f.querySelector("button"), msg = document.getElementById("msg");
   const operador = f.operador.value.trim();
+  const transportador = f.transportador.value.trim();
   if(!operador){ msg.textContent = "Informe o operador responsável."; return; }
+  if(!transportador){ msg.textContent = "Informe o transportador alocado."; return; }
   const valor = parseBRL(f.valor.value);
   if(valor===null){ msg.textContent = "Informe um valor fechado válido."; return; }
 
-  // UM único registro: dados do frete + sinal pra fila de aceite
-  const row = {
-    alerta_id:+a, oferta_id:+o, request_id:+r, acao:"assumido",
-    operador_responsavel:operador, valor_fechado:valor,
-    meli_status:"AGUARDANDO_ACEITE_MELI",
-    confirmado_em: new Date().toISOString(),
-  };
-  const t = f.transportador.value.trim(), p = f.placa.value.trim();
-  if(t) row.transportador_alocado = t;
+  const row = { operador_responsavel:operador, transportador_alocado:transportador, valor_fechado:valor };
+  const p = f.placa.value.trim();
   if(p) row.placa_veiculo = p;
 
   btn.disabled = true; btn.textContent = "Salvando...";
   try{
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
-      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao?alerta_id=eq.${+a}`, {
+      method:"PATCH", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
     });
-    if(resp.status === 201){ sucessoAssumir(operador, row); return; }
-    if(resp.status === 409){ jaRespondida(); return; }
+    if(resp.status === 204 || resp.status === 200){ sucessoAssumir(operador, row); return; }
     await resp.text();
     msg.textContent = "Erro ao salvar ("+resp.status+"). Tente novamente.";
-    btn.disabled = false; btn.textContent = "Salvar e aceitar";
+    btn.disabled = false; btn.textContent = "Salvar dados";
   }catch(err){
     msg.textContent = "Falha de conexão. Tente novamente.";
-    btn.disabled = false; btn.textContent = "Salvar e aceitar";
+    btn.disabled = false; btn.textContent = "Salvar dados";
   }
 }
 
@@ -161,11 +211,11 @@ function sucessoAssumir(operador, row){
   render(`<div class="top" style="background:#1e7d45"><h1>✅ Tudo certo!</h1></div>
     <div class="body center"><div class="big">🎉</div>
       <p><b>${esc(operador)}</b> assumiu o frete por <b>${brl(row.valor_fechado)}</b>.</p>
-      ${row.transportador_alocado?`<p>Transportador: <b>${esc(row.transportador_alocado)}</b>${row.placa_veiculo?" · "+esc(row.placa_veiculo):""}</p>`:""}
-      <p class="hint">O robô aceitou a rota no Meli e o faturamento será avisado por e-mail. Pode fechar esta aba.</p></div>`);
+      <p>Transportador: <b>${esc(row.transportador_alocado)}</b>${row.placa_veiculo?" · "+esc(row.placa_veiculo):""}</p>
+      <p class="hint">A rota foi aceita no Meli e o faturamento será avisado por e-mail. Pode fechar esta aba.</p></div>`);
 }
 
-// ===== RECUSAR (fluxo original, um único registro) =====
+// ===== RECUSAR (um único registro) =====
 function formRecusar(){
   render(`<div class="top" style="background:${RED}"><h1>❌ Recusar oferta</h1><p>Confirme a recusa</p></div>
     <div class="body">${resumoHtml()}
