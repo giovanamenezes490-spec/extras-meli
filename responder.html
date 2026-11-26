@@ -98,33 +98,14 @@ function telaCancelado(){
       <p class="hint">Pode fechar esta aba.</p></div>`);
 }
 
-async function confirmarAceite(){
-  const btn = document.getElementById("bConf");
-  const msg = document.getElementById("msg");
-  btn.disabled = true; btn.textContent = "Disparando aceite...";
-  // grava a linha na fila -> o robô aceita no Meli. O formulário vem em seguida.
-  const row = {
-    alerta_id:+a, oferta_id:+o, request_id:+r, acao:"assumido",
-    meli_status:"AGUARDANDO_ACEITE_MELI",
-    confirmado_em: new Date().toISOString(),
-  };
-  try{
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
-      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
-    });
-    if(resp.status === 201 || resp.status === 409){ formAssumir(); return; } // 409 = já confirmado antes
-    await resp.text();
-    msg.textContent = "Erro ao disparar ("+resp.status+"). Tente novamente.";
-    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
-  }catch(err){
-    msg.textContent = "Falha de conexão. Tente novamente.";
-    btn.disabled = false; btn.textContent = "Confirmar aceite automático";
-  }
+// apenas avança para o formulário; o aceite é disparado ao salvar (um registro só)
+function confirmarAceite(){
+  formAssumir();
 }
 
 // ===== ETAPA 2: formulário (preenche os dados; o aceite já está rodando) =====
 function formAssumir(){
-  render(`<div class="top" style="background:#1e7d45"><h1>🤖 Aceite em andamento</h1><p>Agora preencha os dados do frete</p></div>
+  render(`<div class="top" style="background:#1e7d45"><h1>✅ Assumir frete</h1><p>Preencha os dados — ao salvar, o robô aceita no Meli</p></div>
     <div class="body">${resumoHtml()}
     <form id="f">
       <label>Operador responsável (seu nome) <span class="req">*</span></label>
@@ -135,8 +116,8 @@ function formAssumir(){
       <input name="transportador" autocomplete="off" placeholder="Opcional">
       <label>Placa</label>
       <input name="placa" autocomplete="off" placeholder="Opcional">
-      <button class="btn ok" type="submit">Salvar dados</button>
-      <p class="hint" id="msg">O robô já está aceitando no Meli. Preencha e o faturamento será avisado.</p>
+      <button class="btn ok" type="submit">Salvar e aceitar</button>
+      <p class="hint" id="msg">Ao salvar, o robô aceita a rota no Meli e o faturamento é avisado.</p>
     </form></div>`);
   document.getElementById("f").addEventListener("submit", onSalvarAssumir);
 }
@@ -149,24 +130,30 @@ async function onSalvarAssumir(e){
   const valor = parseBRL(f.valor.value);
   if(valor===null){ msg.textContent = "Informe um valor fechado válido."; return; }
 
-  const row = { operador_responsavel:operador, valor_fechado:valor };
+  // UM único registro: dados do frete + sinal pra fila de aceite
+  const row = {
+    alerta_id:+a, oferta_id:+o, request_id:+r, acao:"assumido",
+    operador_responsavel:operador, valor_fechado:valor,
+    meli_status:"AGUARDANDO_ACEITE_MELI",
+    confirmado_em: new Date().toISOString(),
+  };
   const t = f.transportador.value.trim(), p = f.placa.value.trim();
   if(t) row.transportador_alocado = t;
   if(p) row.placa_veiculo = p;
 
   btn.disabled = true; btn.textContent = "Salvando...";
   try{
-    // atualiza a MESMA linha criada na confirmação (casada pelo alerta_id)
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao?alerta_id=eq.${+a}`, {
-      method:"PATCH", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
+    const resp = await fetch(`${SUPABASE_URL}/rest/v1/respostas_operacao`, {
+      method:"POST", headers:{...SB_HEADERS, "Prefer":"return=minimal"}, body:JSON.stringify(row),
     });
-    if(resp.status === 204 || resp.status === 200){ sucessoAssumir(operador, row); return; }
+    if(resp.status === 201){ sucessoAssumir(operador, row); return; }
+    if(resp.status === 409){ jaRespondida(); return; }
     await resp.text();
     msg.textContent = "Erro ao salvar ("+resp.status+"). Tente novamente.";
-    btn.disabled = false; btn.textContent = "Salvar dados";
+    btn.disabled = false; btn.textContent = "Salvar e aceitar";
   }catch(err){
     msg.textContent = "Falha de conexão. Tente novamente.";
-    btn.disabled = false; btn.textContent = "Salvar dados";
+    btn.disabled = false; btn.textContent = "Salvar e aceitar";
   }
 }
 
